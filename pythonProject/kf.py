@@ -6,6 +6,7 @@ from tkinter.ttk import Combobox
 from tkcalendar import DateEntry
 from tkinter import messagebox
 from datetime import datetime
+from PIL import Image
 connection = sqlite3.connect('my_database.db')  #Подключаемся к базе данных
 cursor = connection.cursor()
 connection.execute("PRAGMA foreign_keys = ON;")
@@ -19,14 +20,14 @@ Date_of_admission DATA NOT NULL,
 Date_of_purchase DATA,
 Admission_price FLOAT NOT NULL,
 Sale_price FLOAT NOT NULL,
-processor TEXT NOY NULL,
+processor TEXT NOT NULL,
 RAM TEXT NOT NULL,
 OS TEXT NOT NULL
 )
 ''')
 
-connection = sqlite3.connect('my_database.db')  #Подключаемся к базе данных
-cursor1 = connection.cursor()
+connection1 = sqlite3.connect('my_database.db')  #Подключаемся к базе данных
+cursor1 = connection1.cursor()
 cursor1.execute('''
 CREATE TABLE IF NOT EXISTS Accessories (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,6 +36,16 @@ name TEXT NOT NULL,
 price FLOAT NOT NULL,
 date_of_sale TEXT NOT NULL,
 FOREIGN KEY (telephone_id) REFERENCES telephone(id)
+)
+''')
+connection2 = sqlite3.connect('my_database.db')  #Подключаемся к базе данных
+cursor5 = connection2.cursor()
+cursor5.execute('''
+CREATE TABLE IF NOT EXISTS Services (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+name TEXT NOT NULL,
+price INTEGER NOT NULL,
+data_of_sale_services DATA NOT NULL
 )
 ''')
 # Функция для обновления Treeview
@@ -177,34 +188,6 @@ def on_calculate_button_click():
     total_profit_record = (None, None, None, profit)  # profit может быть отрицательным
     treeview.insert("", tk.END, values=total_profit_record)
 
-def open_two_add_window():
-
-    def update_sale_date(imei, sale_date):
-        connection = sqlite3.connect('my_database.db')
-        cursor = connection.cursor()
-
-        cursor.execute("UPDATE telephone SET Date_of_purchase = ?, IMEI = ?", (sale_date, imei))
-        connection.commit()
-
-    def submit_data():
-        imei = entry.get()
-        sale_date = date.get()
-        update_sale_date(imei, sale_date)
-
-    add_window_1 = tk.Toplevel(root)
-    add_window_1.title("Добавление записи")
-    add_window_1.geometry("500x600")
-    entry = ttk.Entry(add_window_1)
-    entry.pack(pady=20, anchor="nw", padx=20)
-    label = ttk.Label(add_window_1, text="Введите IMEI продаваемого телефона", font=("Arial", 10))
-    label.place(x=200, y=15)
-    date = DateEntry(add_window_1, width=18, background='darkblue', foreground='white', borderwidth=2)
-    date.pack(pady=20, anchor="nw", padx=10)
-    label1 = ttk.Label(add_window_1, text="Введите дату продажи", font=("Arial", 10))
-    label1.place(x=200, y=75)
-    submit_button = tk.Button(add_window_1, text="Обновить", command=submit_data)
-    submit_button.pack(padx=20, anchor="s")
-
 def open_add_window():
     add_window = tk.Toplevel(root)
     add_window.title("Добавление записи")
@@ -227,7 +210,7 @@ def open_add_window():
     entry4.pack(pady=20, anchor="nw", padx=10)
     entry5 = ttk.Entry(add_window)
     entry5.pack(pady=20, anchor="nw", padx=10)
-    label = ttk.Label(add_window, text="Введите название телефона", font=("Arial", 10))
+    label = ttk.Label(add_window, text="Введите модель телефона", font=("Arial", 10))
     label.place(x=200,y=15)
     label1 = ttk.Label(add_window, text="Введите или выберите марку телефона", font=("Arial", 10))
     label1.place(x=200, y=75)
@@ -391,9 +374,9 @@ def fetch_data():
 
 # Прописываем названия колонок для каждой таблицы
 columns_mapping = {
-    "telephone": ["ID", "Название", "Брэнд", "IMEI", "Дата приёма", "Дата продажи", "Цена приёма", "Цена продажи", "Процессор", "Оперативная память", "Операционная система"],
-    "Services": ["ID", "Name", "Price"],
-    "Accessories": ["ID", "telephone_id", "name", "price", "date_of_sale"]
+    "telephone": ["ID", "Модель", "Брэнд", "IMEI", "Дата приёма", "Дата продажи", "Цена приёма", "Цена продажи", "Процессор", "Оперативная память", "Операционная система"],
+    "Services": ["ID", "Название услуги", "Цена", "Дата продажи"],
+    "Accessories": ["ID", "id_Телефона", "name", "price", "date_of_sale"]
 }
 def fetch_data(table_names):
     # Соединяемся с базой данных
@@ -534,11 +517,166 @@ def open_accessory_window():
     tk.Button(accessory_window, text="Добавить", command=add_accessory).grid(row=5, column=0, columnspan=2, pady=20)
 
 
+def load_data(tree, filter_brand="", filter_model="", filter_imei=""):
+    for item in tree.get_children():
+        tree.delete(item)
+    connection = sqlite3.connect('my_database.db')
+    cursor2 = connection.cursor()
+    query = """
+        SELECT brand, name, IMEI, Date_of_purchase 
+        FROM telephone 
+        WHERE brand LIKE ? AND name LIKE ? AND IMEI LIKE ? 
+        ORDER BY brand, name, IMEI
+    """
+    cursor2.execute(query, (f"%{filter_brand}%", f"%{filter_model}%", f"%{filter_imei}%"))
+    for row in cursor2.fetchall():
+        tree.insert("", tk.END, values=row)
+    connection.close()
+
+
+def on_item_select(event, tree, date_entry):
+    selected_item = tree.selection()
+    if selected_item:
+        item_values = tree.item(selected_item[0], 'values')
+        date_entry.delete(0, tk.END)
+        date_entry.insert(0, item_values[3])  # Вставляем дату покупки в поле
+
+
+def update_purchase_date(tree, date_entry):
+    selected_item = tree.selection()
+    if not selected_item:
+        messagebox.showwarning("Выбор записи", "Пожалуйста, выберите запись для обновления.")
+        return
+    new_date = date_entry.get()
+    item_values = tree.item(selected_item[0], 'values')
+    imei = item_values[2]
+    connection1 = sqlite3.connect('my_database.db')
+    cursor1 = connection1.cursor()
+    cursor1.execute("UPDATE telephone SET Date_of_purchase = ? WHERE IMEI = ?", (new_date, imei))
+    connection1.commit()
+    connection1.close()
+    load_data(tree)  # Обновляем данные в дереве
+
+
+def load_combobox_data():
+    connection3 = sqlite3.connect('my_database.db')
+    cursor3 = connection3.cursor()
+
+    cursor3.execute("SELECT DISTINCT brand FROM telephone")
+    brands = [row[0] for row in cursor3.fetchall()]
+
+    cursor3.execute("SELECT DISTINCT name FROM telephone")
+    models = [row[0] for row in cursor3.fetchall()]
+
+    cursor3.execute("SELECT DISTINCT IMEI FROM telephone")
+    imeis = [row[0] for row in cursor3.fetchall()]
+
+    connection3.close()
+
+    return brands, models, imeis
+
+
+def filter_data(tree, brand_combobox, model_combobox, imei_combobox):
+    filter_brand = brand_combobox.get()
+    filter_model = model_combobox.get()
+    filter_imei = imei_combobox.get()
+    load_data(tree, filter_brand, filter_model, filter_imei)
+
+def open_new_window():
+    new_window = tk.Toplevel(root)
+    new_window.title("Управление устройствами")
+    global tree
+    tree = ttk.Treeview(new_window, columns=("Brand", "Model", "IMEI", "Date of Purchase"), show='headings')
+    tree.heading("Brand", text="Марка")
+    tree.heading("Model", text="Модель")
+    tree.heading("IMEI", text="IMEI")
+    tree.heading("Date of Purchase", text="Дата продажи")
+    tree.pack(fill=tk.BOTH, expand=True)
+
+    load_data(tree)
+
+    # Загружаем данные для комбобоксов
+    brands, models, imeis = load_combobox_data()
+
+    brand_label = ttk.Label(new_window, text="Марка:")
+    brand_label.pack()
+    brand_combobox = ttk.Combobox(new_window, values=brands)
+    brand_combobox.pack()
+
+    model_label = ttk.Label(new_window, text="Модель:")
+    model_label.pack()
+    model_combobox = ttk.Combobox(new_window, values=models)
+    model_combobox.pack()
+
+    imei_label = ttk.Label(new_window, text="IMEI:")
+    imei_label.pack()
+    imei_combobox = ttk.Combobox(new_window, values=imeis)
+    imei_combobox.pack()
+
+    filter_button = tk.Button(new_window, text="Применить фильтр", command=lambda: filter_data(tree, brand_combobox, model_combobox, imei_combobox))
+    filter_button.pack(pady=5)
+
+    date_entry = DateEntry(new_window, width=12, background='darkblue', foreground='white', date_pattern='yyyy-mm-dd')
+    date_entry.pack(pady=5)
+
+    update_button = tk.Button(new_window, text="Обновить дату покупки", command=lambda: update_purchase_date(tree, date_entry))
+    update_button.pack(pady=5)
+
+    tree.bind("<Double-1>", lambda event: on_item_select(event, tree, date_entry))
+
+
+def open_add_service_window():
+    # Создаем новое окно
+    window = Toplevel(root)
+    window.title("Добавление услуги")
+    window.geometry("220x250")
+
+    # Поле для ввода названия услуги
+    tk.Label(window, text="Название услуги:").pack(pady=5)
+    service_name_entry = tk.Entry(window)
+    service_name_entry.pack(pady=5)
+
+    # Поле для ввода цены услуги
+    tk.Label(window, text="Цена услуги:").pack(pady=5)
+    service_price_entry = tk.Entry(window)
+    service_price_entry.pack(pady=5)
+
+    # Выбор даты
+    tk.Label(window, text="Дата продажи:").pack(pady=5)
+    sale_date_entry = DateEntry(window, width=12, background='darkblue', foreground='white', borderwidth=2, pady=20)
+    sale_date_entry.pack(pady=5)
+    #sale_date_entry.insert(0, datetime.now().strftime('%Y-%m-%d'))  # Устанавливаем текущую дату по умолчанию
+
+    def save_service():
+        service_name = service_name_entry.get()
+        service_price = service_price_entry.get()
+        sale_date = sale_date_entry.get()
+
+        if service_name and service_price and sale_date:
+            try:
+                service_price = float(service_price)
+                connections = sqlite3.connect('my_database.db')
+                cursor = connections.cursor()
+                # Сохраняем запись в базу данных
+                cursor.execute('INSERT INTO Services (name, price, data_of_sale_services) VALUES (?, ?, ?)',
+                               (service_name, service_price, sale_date))
+                connections.commit()
+                connection.close()
+                messagebox.showinfo("Успешно", "Запись успешно добавлена!")
+                window.destroy()  # Закрываем окно после сохранения
+            except ValueError:
+                messagebox.showwarning("Ошибка", "Цена должна быть числом!")
+        else:
+            messagebox.showwarning("Ошибка", "Пожалуйста, заполните все поля!")
+
+    # Кнопка для сохранения услуги
+    save_button = tk.Button(window, text="Сохранить", command=save_service)
+    save_button.pack(pady=10)
 
 # Создаем основное окно
 root = tk.Tk()
 root.title("База данных магазина")
-root.geometry("1440x900")
+root.geometry("1540x900")
 root.resizable(False, False)
 # Создаем Combobox для выбора таблиц
 combobox = ttk.Combobox(root, values=table_names)
@@ -552,12 +690,15 @@ add_accessory_button.pack(padx=10, anchor="nw")
 #Создаём кнопку для подсчета прибыли
 btn4 = ttk.Button(text="Прибыль по телефонам", command=open_date_window)
 btn4.pack(anchor='nw', padx=10)
+#Кнопка для добавления услуги
+add_service_btn = ttk.Button(root, text="Оказать услугу", command=open_add_service_window)
+add_service_btn.pack(padx=10, anchor="nw")
 #Cоздаём button
 btn = ttk.Button(text="Добавить", command=open_add_window)
 btn.pack(anchor="se", pady=10)
 #Создаём кнопку продажи телефона
-btn1 = ttk.Button(text="Продать", command=open_two_add_window)
-btn1.pack(anchor="se", pady=10)
+open_window_button = ttk.Button(root, text="Продать телефон", command=open_new_window)
+open_window_button.pack(pady=10, anchor="se")
 #Создаём кнопку фильтра
 btn2 = ttk.Button(text="Не проданные", command=show_sold_items_1)
 btn2.pack(anchor="se", pady=10)
@@ -568,8 +709,8 @@ btn3.pack(anchor="se", pady=10)
 treeview_frame = tk.Frame(root)
 treeview_frame.pack(fill=tk.BOTH, expand=True)
 # Кнопка для получения данных
-fetch_button = tk.Button(root, text="Загрузить данные", command=fetch_data)
-fetch_button.pack(pady=5)
+#fetch_button = tk.Button(root, text="Загрузить данные", command=fetch_data)
+#fetch_button.pack(pady=5)
 root.mainloop()
 
 

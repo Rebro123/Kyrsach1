@@ -1,69 +1,98 @@
-import sqlite3
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import messagebox, Toplevel
+from tkinter import ttk
+import sqlite3
+from PIL import Image, ImageTk
+from tkinter import filedialog as fd
+import io
+
+# Создаем или подключаемся к базе данных
+conn = sqlite3.connect('images_database.db')
+cursor = conn.cursor()
+
+# Создаем таблицу, если ее еще нет
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS images (
+    id INTEGER PRIMARY KEY,
+    description TEXT NOT NULL,
+    image BLOB NOT NULL
+)
+''')
+conn.commit()
 
 
-def calculate_profit(start_date, end_date):
-    # Соединяемся с базой данных
-    conn = sqlite3.connect('my_database.db')
-    cursor = conn.cursor()
-
-    # SQL-запрос для вычисления прибыли
-    query = """
-    SELECT SUM(CASE WHEN Date_of_purchase IS NOT NULL THEN Sale_price - Admission_price ELSE 0 END) 
-    FROM telephone 
-    WHERE Date_of_admission BETWEEN ? AND ?
-    """
-
-    cursor.execute(query, (start_date, end_date))
-    profit = cursor.fetchone()[0]
-    conn.close()
-
-    return profit if profit is not None else 0
+def upload_image():
+    # Функция для загрузки изображения
+    file_path = tk.filedialog.askopenfilename(filetypes=[("Image files", "*.jpg;*.jpeg;*.png")])
+    if file_path:
+        with open(file_path, 'rb') as file:
+            img_data = file.read()
+            description = description_entry.get()
+            cursor.execute('INSERT INTO images (description, image) VALUES (?, ?)', (description, img_data))
+            conn.commit()
+            messagebox.showinfo("Успешно", "Изображение успешно загружено!")
+            description_entry.delete(0, tk.END)
+            load_images()
 
 
-def on_calculate_button_click():
-    start_date = start_date_entry.get()
-    end_date = end_date_entry.get()
+def load_images():
+    # Функция для загрузки изображений в Treeview
+    for row in tree.get_children():
+        tree.delete(row)
 
-    # Проверка на корректность введенных данных
-    if not start_date or not end_date:
-        messagebox.showerror("Ошибка", "Пожалуйста, введите обе даты.")
+    cursor.execute('SELECT id, description FROM images')
+    for row in cursor.fetchall():
+        tree.insert('', 'end', values=row)
+
+
+def view_image(event):
+    # Функция для отображения изображения в отдельном окне
+    selected_item = tree.selection()
+    if not selected_item:
         return
+    item = tree.item(selected_item)
+    image_id = item['values'][0]
 
-    # Вычисление прибыли
-    profit = calculate_profit(start_date, end_date)
-    messagebox.showinfo("Прибыль", f"Прибыль с {start_date} по {end_date}: {profit}")
+    cursor.execute('SELECT image FROM images WHERE id = ?', (image_id,))
+    img_data = cursor.fetchone()[0]
 
+    # Oткрываем изображение с использованием PIL
+    img = Image.open(io.BytesIO(img_data))
+    img = img.resize((400, 400))  # Изменяем размер для отображения
+    img_tk = ImageTk.PhotoImage(img)
 
-def open_date_window():
-    # Создаем новое окно
-    date_window = tk.Toplevel(root)
-    date_window.title("Ввод дат")
+    view_window = Toplevel(root)
+    view_window.title("Просмотр изображения")
 
-    # Поля для ввода дат
-    tk.Label(date_window, text="Дата приема (YYYY-MM-DD):").pack(pady=5)
-    global start_date_entry
-    start_date_entry = tk.Entry(date_window)
-    start_date_entry.pack(pady=5)
-
-    tk.Label(date_window, text="Дата продажи (YYYY-MM-DD):").pack(pady=5)
-    global end_date_entry
-    end_date_entry = tk.Entry(date_window)
-    end_date_entry.pack(pady=5)
-
-    # Кнопка для расчета
-    calculate_button = tk.Button(date_window, text="Посчитать прибыль", command=on_calculate_button_click)
-    calculate_button.pack(pady=10)
+    img_label = tk.Label(view_window, image=img_tk)
+    img_label.image = img_tk  # Сохраняем ссылку на изображение
+    img_label.pack()
 
 
-# Создаем главное окно
+# Создаем основное окно
 root = tk.Tk()
-root.title("Database Viewer")
+root.title("Управление изображениями")
 
-# Кнопка для открытия окна выбора дат
-open_dates_button = tk.Button(root, text="Выбрать даты", command=open_date_window)
-open_dates_button.pack(pady=10)
+# Поле для описания изображения
+description_entry = tk.Entry(root, width=40)
+description_entry.pack(pady=10)
 
-# Запуск главного цикла приложения
+# Кнопка для загрузки изображения
+upload_button = tk.Button(root, text="Загрузить изображение", command=upload_image)
+upload_button.pack(pady=10)
+
+# Treeview для отображения загруженных изображений
+tree = ttk.Treeview(root, columns=('ID', 'Описание'), show='headings')
+tree.heading('ID', text='ID')
+tree.heading('Описание', text='Описание')
+tree.pack(pady=10)
+
+tree.bind('<<TreeviewSelect>>', view_image)  # Обработчик события выбора
+
+load_images()  # Загружаем изображения при запуске
+
+# Запускаем основной цикл
 root.mainloop()
+
+# Закрываем соединение с базой данных перед выходом
+conn.close()
